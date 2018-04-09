@@ -1,0 +1,154 @@
+---
+title: "Prediction Assignment Writeup"
+author: "Audrei Marcelo"
+date: "21 de março de 2018"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+## Background
+
+Using devices such as Jawbone Up, Nike FuelBand, and Fitbit it is now possible to collect a large amount of data about personal activity relatively inexpensively. These type of devices are part of the quantified self movement – a group of enthusiasts who take measurements about themselves regularly to improve their health, to find patterns in their behavior, or because they are tech geeks. One thing that people regularly do is quantify how much of a particular activity they do, but they rarely quantify how well they do it. In this project, your goal will be to use data from accelerometers on the belt, forearm, arm, and dumbell of 6 participants. They were asked to perform barbell lifts correctly and incorrectly in 5 different ways. More information is available from the website here: 
+<http://web.archive.org/web/20161224072740/http:/groupware.les.inf.puc-rio.br/har> (see the section on the Weight Lifting Exercise Dataset).
+
+## Data
+
+The data for this project come from this source: 
+
+<http://web.archive.org/web/20161224072740/http:/groupware.les.inf.puc-rio.br/har> 
+
+The training data for this project are available here:
+
+<https://d396qusza40orc.cloudfront.net/predmachlearn/pml-training.csv>
+
+The test data are available here:
+
+<https://d396qusza40orc.cloudfront.net/predmachlearn/pml-testing.csv>
+
+
+## Environment Setup
+
+```{r setup_environment}
+library(knitr)
+library(caret)
+library(rpart)
+library(rpart.plot)
+library(rattle)
+library(randomForest)
+library(corrplot)
+library(backports)
+set.seed(234)
+```
+
+
+## Downloading and Loading Data
+
+```{r Download and Load}
+TrainUrl <- "https://d396qusza40orc.cloudfront.net/predmachlearn/pml-training.csv"
+TrainFile<-"pml-traininig.csv"
+download.file(TrainUrl, destfile = TrainFile)
+training <- read.csv(TrainFile)
+dim(training)
+
+TestUrl  <- "https://d396qusza40orc.cloudfront.net/predmachlearn/pml-testing.csv"
+TestFile<-"pml-testing.csv"
+download.file(TestUrl, destfile = TestFile)
+testing  <- read.csv(TestFile)
+dim(testing)
+
+```
+
+
+## Create Partition
+
+```{r partition, echo=TRUE}
+inTrain  <- createDataPartition(training$classe, p=0.7, list=FALSE)
+Train <- training[inTrain, ]
+Test  <- training[-inTrain, ]
+dim(Train)
+dim(Test)
+```
+
+
+## Cleaning Data
+
+Cleaning the data to use the dataset in model generation.
+
+```{r cleaning, echo=TRUE}
+
+Near0 <- nearZeroVar(Train)
+Train <- Train[, -Near0]
+Test  <- Test[, -Near0]
+dim(Train)
+dim(Test)
+
+All_NA    <- sapply(Train, function(x) mean(is.na(x))) > 0.95
+Train <- Train[, All_NA==FALSE]
+Test  <- Test[, All_NA==FALSE]
+dim(Train)
+dim(Test)
+
+Train <- Train[, -(1:5)]
+Test  <- Test[, -(1:5)]
+dim(Train)
+
+```
+
+
+
+## Predition Models
+
+Generating and evaluating the results of two models.
+
+```{r predition_RF, echo=TRUE}
+##a. Random Forests
+# model fit
+set.seed(234)
+controlRF <- trainControl(method="cv", number=3, verboseIter=FALSE)
+modelFitRF <- train(classe ~ ., data=Train, method="rf",
+                          trControl=controlRF)
+modelFitRF$finalModel
+
+predictRF <- predict(modelFitRF, newdata=Test)
+confusionMatRF <- confusionMatrix(predictRF, Test$classe)
+confusionMatRF
+
+plot(confusionMatRF$table, col = confusionMatRF$byClass, 
+     main = paste("Accuracy using Random Forest =",
+                  round(confusionMatRF$overall['Accuracy'], 4)))
+```
+
+
+```{r predition_tree, echo=TRUE}
+##b. Decision Tree
+# model fit
+set.seed(234)
+modelFitTree <- rpart(classe ~ ., data=Train, method="class")
+fancyRpartPlot(modelFitTree)
+
+predictTree <- predict(modelFitTree, newdata=Test, type="class")
+confusionMatTree <- confusionMatrix(predictTree, Test$classe)
+confusionMatTree
+
+plot(confusionMatTree$table, col = confusionMatTree$byClass, 
+     main = paste("Accuracy using Decision Tree =",
+                  round(confusionMatTree$overall['Accuracy'], 4)))
+```
+
+
+
+## Model Selection
+
+To choose the model was calculated the accuracy. The most accurate model was random forest and will be used to predict 20 different test cases.
+
+
+## Test
+
+```{r test, echo=TRUE}
+# Applying the select model in test dataset
+predict <- predict(modelFitRF, newdata=testing)
+predict
+```
